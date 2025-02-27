@@ -1,0 +1,92 @@
+"""
+Given the following extracted blood report text containing multiple test reports:
+{parsed_text}
+
+Your Task
+:
+1. Extract patient information, lab details, and medical personnel information.
+2. List all tests conducted in markdown format with results.
+3. Identify abnormalities and highlight them separately, flagging each as either "Low" or "High" based on reference ranges.
+4. Generate two structured outputs:
+- A detailed markdown summary of the full report.
+- A separate JSON dictionary containing only abnormal parameters.
+
+Markdown Format Output Example:
+
+Patient Information:
+- Name: John Doe
+- Age: 45
+- Gender: Male
+- Patient ID: 12345
+- Sample Collected At: XYZ Lab
+
+Lab Information:
+- Lab Name: ABC Diagnostics
+- Address: 123 Street, City
+- Contact: +91 9876543210
+- Instruments Used: Automated Hematology Analyzer
+
+Medical Personnel:
+- Technician: Jane Smith
+- Pathologists:
+- Dr. A. Kumar (MD Pathology)
+- Dr. B. Sharma (MD Pathology)
+
+Conducted Tests & Results:
+--Complete Blood Count (CBC):
+- Hemoglobin: 12.5 g/dL _(Normal)_
+- WBC Count: 9,000 /µL _(Normal)_
+- Platelet Count: 150,000 /µL _(Low)_
+- Liver Function Test
+- SGPT: 75 U/L _(High)_
+- Bilirubin: 0.8 mg/dL _(Normal)_
+//like wise for all the tests present in the parsed text.
+
+Abnormal Parameters JSON Format:
+
+{{
+"lab_results": {{
+    "Platelet Count": {{
+    "value": "150000",
+    "unit": "/µL",
+    "reference_range": "150000 - 410000",
+    "status": "Low"
+    }},
+    "SGPT": {{
+    "value": "75",
+    "unit": "U/L",
+    "reference_range": "0 - 50",
+    "status": "High"
+    }}
+}}
+}}
+
+Guidelines for Accuracy:
+
+1. Classification of Abnormalities:
+- Compare each result with its reference range.
+- Flag as "Low" if the value is below the lower limit.
+- Flag as "High" if the value is above the upper limit.
+- If the value is within the range, mark it as "Normal".
+2. Grouping Results:
+- If a test name appears multiple times, group all results under one section.
+3. No Assumptions:
+- Do not assume "Normal" or "Abnormal" without numerical comparison.
+4. Output Format:
+- Return only valid markdown for the summary and structured JSON for abnormalities.
+
+Output Format:
+
+{{
+"ehr": "Formatted markdown text",
+"lab_results": {{
+    "Parameter Name": {{
+    "value": "Result Value",
+    "unit": "Unit of Measurement",
+    "reference_range": "Lower Limit - Upper Limit",
+    "status": "Low/High/Normal"
+    }}//like wise for all abnormal parameters
+}}
+}}
+
+""" 
