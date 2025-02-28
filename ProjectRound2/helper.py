@@ -246,8 +246,9 @@ def get_parsed_text_using_gemini(file_path):
         #     compressed_path = "uploads/compressed.jpg"
         #     compress_image(file_path, compressed_path, quality=70, max_size=(800, 800))
         #     file_path = compressed_path
-        raise Exception("Could not do!")
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        # raise Exception("Could not do!")
+        # model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name="gemini-2.0-flash")
         file_id = genai.upload_file(path=file_path)
         user_input = """
         Extract the text from the uploaded blood report file!
@@ -261,6 +262,7 @@ def get_parsed_text_using_gemini(file_path):
         try:
             if 'pdf' in file_path: 
                 if(is_scanned_pdf(file_path)):
+                    print(f"{file_path} a scanned document!")
                     get_parsed_text_from_scanned_pdf(file_path)
                 return get_parsed_text_using_pypdf(file_path)
             else:
@@ -276,7 +278,6 @@ def get_parsed_text_using_gemini(file_path):
                 print("Google Visison Failed!")
                 processed_image = preprocess_image(file_path)
                 return get_parsed_text_using_tesseract(processed_image)
-
 def generating_structured_report(llm,parsed_text):
     class LabTestReport(BaseModel):
         patient_info: dict = Field(..., description="Basic details of the patient.")
@@ -510,59 +511,63 @@ def get_medical_insights_n_recommendataions(parsed_report):
       abnormal_parameters: list[ParameterRecommendation] = Field(..., description="List of insights for all abnormal parameters.")
   llm = ChatGroq(model_name='deepseek-r1-distill-llama-70b',groq_api_key = groq_api_key)
   structured_llm = llm.with_structured_output(HealthInsights)
-  def generate_health_recommendations_n_insights(abnormal_results: dict):
-      if len(abnormal_results) == 0: 
-        return {}
-      """
-      Generates insights & recommendations for all abnormal blood parameters in a single call.
-      """
-      formatted_params = "\n".join([f"- {param}: {status}" for param, status in abnormal_results.items() if status == 'Low' or status=='High'])
-      print("--------------------------------")
-      print("Formatted Abnormal Parameters")
-      print(formatted_params)
-      print("--------------------------------")
-
-      prompt_template = f"""
-        The following blood test parameters are abnormal:
-        {formatted_params}
-
-        Your Task:
-        For each abnormal parameter, generate structured health insights based on medical knowledge relevant to India, considering:  
-        - Common health conditions prevalent in India (e.g., anemia, diabetes, hypertension).  
-        - Dietary recommendations using locally available foods.  
-        - Lifestyle suggestions that are practical for Indian demographics.  
-        - Medical advice aligned with healthcare practices in India.  
-
-        Response Format:
-        {{
-        "abnormal_parameters": [
-            {{
-            "parameter": "Parameter Name",
-            "status": "High/Low",
-            "possible_disease": ["List possible health conditions relevant to India"],
-            "possible_causes": ["List of possible reasons"],
-            "dietary_suggestions": ["Indian foods that help normalize levels (e.g., spinach for iron deficiency)"],
-            "lifestyle_changes": ["Exercise, hydration, and habits suited to Indian lifestyles"],
-            "medical_advice": "When to consult a doctor? Consider India's healthcare access & common medical practices."
-            }}
-        ]
-        }}
-
-        Additional Guidelines:
-        - Dietary suggestions must include Indian foods (e.g., "Turmeric and cumin for anti-inflammatory benefits").  
-        - Lifestyle changes should be practical for Indian work-life routines (e.g., "Yoga for stress management").  
-        - Medical advice should consider India's healthcare accessibility (e.g., "Consult a general physician at a government clinic if symptoms persist").  
-
-        Return only valid JSON output.
+  def generate_health_recommendations_n_insights(llm,abnormal_results: dict):
+    try:
+        if len(abnormal_results) == 0: 
+            return {}
         """
-      structured_response = structured_llm.invoke(prompt_template)
-      return structured_response.dict()
+        Generates insights & recommendations for all abnormal blood parameters in a single call.
+        """
+        formatted_params = "\n".join([f"- {param}: {status}" for param, status in abnormal_results.items() if status == 'Low' or status=='High'])
+        print("--------------------------------")
+        print("Formatted Abnormal Parameters")
+        print(formatted_params)
+        print("--------------------------------")
+
+        prompt_template = f"""
+            The following blood test parameters are abnormal:
+            {formatted_params}
+
+            Your Task:
+            For each abnormal parameter, generate structured health insights based on medical knowledge relevant to India, considering:  
+            - Common health conditions prevalent in India (e.g., anemia, diabetes, hypertension).  
+            - Dietary recommendations using locally available foods.  
+            - Lifestyle suggestions that are practical for Indian demographics.  
+            - Medical advice aligned with healthcare practices in India.  
+
+            Response Format:
+            {{
+            "abnormal_parameters": [
+                {{
+                "parameter": "Parameter Name",
+                "status": "High/Low",
+                "possible_disease": ["List possible health conditions relevant to India"],
+                "possible_causes": ["List of possible reasons"],
+                "dietary_suggestions": ["Indian foods that help normalize levels (e.g., spinach for iron deficiency)"],
+                "lifestyle_changes": ["Exercise, hydration, and habits suited to Indian lifestyles"],
+                "medical_advice": "When to consult a doctor? Consider India's healthcare access & common medical practices."
+                }}
+            ]
+            }}
+
+            Additional Guidelines:
+            - Dietary suggestions must include Indian foods (e.g., "Turmeric and cumin for anti-inflammatory benefits").  
+            - Lifestyle changes should be practical for Indian work-life routines (e.g., "Yoga for stress management").  
+            - Medical advice should consider India's healthcare accessibility (e.g., "Consult a general physician at a government clinic if symptoms persist").  
+
+            Return only valid JSON output.
+            """
+        structured_response = structured_llm.invoke(prompt_template)
+        return structured_response.dict()
+    except Exception as e:
+        print(e)
+        llm = ChatGroq(model_name='llama-3.3-70b-versatile',groq_api_key = "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")
+        return generate_health_recommendations_n_insights(llm, abnormal_results)
   blood_results = parsed_report.lab_results
   abnormal_results = abnormal_results = {param: details['status'] for param, details in blood_results.items() if details['status'] != "Normal"}
-  recommendations_n_insights = generate_health_recommendations_n_insights(abnormal_results)
+  recommendations_n_insights = generate_health_recommendations_n_insights(llm,abnormal_results)
   return recommendations_n_insights
-
-
+ 
 def get_patient_report_history(patient_name, user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
