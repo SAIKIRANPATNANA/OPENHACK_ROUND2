@@ -15,8 +15,10 @@ import pymupdf
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+os.environ["LANGCHAIN_API_KEY"] = "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"
+os.environ["LANGCHAIN_TRACING_V2"]="true"
+os.environ["LANGCHAIN_PROJECT"]="default"
 
-# Add these custom exceptions at the top of the file
 class ParseError(Exception):
     pass
 
@@ -31,14 +33,12 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SECRET_KEY'] = os.urandom(24)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['PLOTS_FOLDER'] = 'static/plots'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.secret_key = os.urandom(24)  # Generate a secure random secret key
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['PERMANENT_SESSION_LIFETIME'] = 1800  # Session timeout in seconds (30 minutes)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  
+app.secret_key = os.urandom(24)  
+app.config['PERMANENT_SESSION_LIFETIME'] = 1800 
 
-# Ensure upload folder exists
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -68,7 +68,6 @@ def is_multiple_blood_reports(file_path):
 def init_db():
     with get_db() as db:
         cursor = db.cursor()
-        # Create tables if they don't exist
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS Users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,32 +124,25 @@ def upload_file():
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
-        
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-
-        # Validate file type
         allowed_extensions = {'pdf', 'jpg', 'jpeg', 'png'}
         if not '.' in file.filename or \
            file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
             return jsonify({'error': 'Invalid file type. Allowed types: PDF, JPG, JPEG, PNG'}), 400
-
-        # Save the uploaded file
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         case = 0
         try:
             file.save(file_path)
             if(is_multiple_blood_reports(file_path)):
                 case  = 1
-            print("It's a multi-blood report")
+                print(f"{file_path} a multi test blood report")
             print(f"File saved successfully: {file_path}")
         except Exception as e:
             print(f"File save error: {str(e)}")
             return jsonify({'error': f'Failed to save file: {str(e)}'}), 500
-
         try:
-            # Process the file using helper functions
             print(f"Processing file: {file_path}")
             if(not case):
                 parsed_report = helper.get_parsed_report(file_path)
@@ -158,28 +150,24 @@ def upload_file():
                 parsed_report = helper.get_parsed_multi_report(file_path)    
             print("Report parsed successfully")
 
-            # Convert Pydantic model to dict for JSON serialization
             report_dict = parsed_report.dict() if hasattr(parsed_report, 'dict') else parsed_report
-            
             try:
                 print("Generating plots...")
                 helper.create_blood_test_plots(parsed_report, "static/plots")
                 print("Plots generated successfully")
             except Exception as e:
                 print(f"Warning: Plot generation failed: {str(e)}")
-            
-            print("Getting medical insights...")
-            insights = helper.get_medical_insights_n_recommendataions(parsed_report)
-            print("Medical insights generated successfully")
-            # After successful parsing, store in database
+            try: 
+                print("Getting medical insights...")
+                insights = helper.get_medical_insights_n_recommendataions(parsed_report)
+                print("Medical insights generated successfully")
+            except Exception as e:
+                print(e)
+                print("Insight Generation went unsuccessful.")
             if not case:
                 with get_db() as db:
-                    cursor = db.cursor()
-                    
-                    # Convert Pydantic model to dict if needed
+                    cursor = db.cursor() 
                     parsed_report_dict = parsed_report.dict() if hasattr(parsed_report, 'dict') else parsed_report
-                    
-                    # Get or create patient record
                     patient_info = parsed_report_dict.get('patient_info', {})
                     cursor.execute("""
                         INSERT OR IGNORE INTO Patients (user_id, name, age, gender)
@@ -190,16 +178,11 @@ def upload_file():
                         patient_info.get('age').split()[0],
                         patient_info.get('gender')
                     ))
-                    
-                    # Get patient_id
                     cursor.execute("SELECT COUNT(*) FROM Patients")
-                    print("-----GETTING PATIENT ID------")
                     try:
                         patient_id = cursor.fetchone()[0]  
                     except Exception as e:
                         print(e)
-                    print(f"----PATIENT ID RECIEVED: {patient_id}----")
-                    # Store report with timezone-aware timestamp
                     ist = pytz.timezone('Asia/Kolkata')
                     current_time = datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S %z')
                     cursor.execute("""
@@ -207,24 +190,22 @@ def upload_file():
                         VALUES (?, ?, ?)
                     """, (patient_id, json.dumps(parsed_report_dict), current_time))
                     db.commit()
+                    print("Patient and Report have been successfully stored into database.")
             response_data = {
                 'success': True,
                 'report': report_dict,
                 'insights': insights,
             }
             return jsonify(response_data)
-
         except Exception as e:
             print(f"Error in upload endpoint: {str(e)}")
             return jsonify({'error': f'Failed to process report: {str(e)}'}), 422
         finally:
-            # Clean up uploaded file
             try:
                 os.remove(file_path)
                 print(f"Cleaned up file: {file_path}")
             except Exception as e:
                 print(f"Cleanup error: {str(e)}")
-
     except Exception as e:
         print(f"Server error: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
@@ -232,32 +213,24 @@ def upload_file():
 @app.route('/chat', methods=['POST'])
 @login_required
 def chat():
-    try:
+    try: 
+        print("Chat has been initiated.")
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data received'}), 400
-
+            return jsonify({'error': 'No JSON data received'}), 40
         message = data.get('message')
         current_report = data.get('report')
-        session_id = data.get('session_id', f"chat_{session['user_id']}")  # Use user_id in session_id
-
+        session_id = data.get('session_id', f"chat_{session['user_id']}")  
         if not message or not current_report:
             return jsonify({'error': 'Missing message or report data'}), 400
-
-        # Get role from session - moved outside conditional block
-        role = session.get('role', 'patient')  # Default to patient if not set
-
+        role = session.get('role', 'patient') 
         previous_reports = "No Previous Reports Available"
         if(len(current_report)>2):
-            # Get patient name from the current report
             patient_name = current_report.get('patient_info', {}).get('name')
             if not patient_name:
                 return jsonify({'error': 'Patient name not found in report'}), 400
-
-            # Get patient's previous reports
             previous_reports = helper.get_patient_report_history(patient_name, session['user_id'])
         try:
-            # Generate response using the updated chat function
             response = helper.get_chat_response(
                 message=message,
                 role=role,
@@ -265,16 +238,12 @@ def chat():
                 previous_reports=previous_reports,
                 session_id=session_id
             )
-
             if not response:
                 return jsonify({'error': 'No response generated'}), 500
-
             return jsonify({'response': response})
-
         except Exception as e:
             print(f"Error generating chat response: {str(e)}")
             return jsonify({'error': f'Failed to generate response: {str(e)}'}), 500
-
     except Exception as e:
         print(f"Error in chat endpoint: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
@@ -285,17 +254,13 @@ def login():
         if 'user_id' in session:
             return redirect(url_for('index'))
         return render_template('login.html')
-    
     try:
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
-
         if not email or not password:
             return jsonify({'error': 'Missing email or password'}), 400
-
         hashed_password = hash_password(password)
-        
         with get_db() as db:
             cursor = db.cursor()
             cursor.execute(
@@ -303,7 +268,6 @@ def login():
                 (email, hashed_password)
             )
             user = cursor.fetchone()
-            
             if user:
                 session['user_id'] = user['user_id']
                 session['role'] = user['role']  
@@ -327,7 +291,6 @@ def register():
         email = data['email']
         password = hash_password(data['password'])
         role = data['role']
-        
         with get_db() as db:
             cursor = db.cursor()
             cursor.execute(
@@ -335,7 +298,6 @@ def register():
                 (name, email, password, role)
             )
             db.commit()
-            
         return jsonify({'success': True, 'message': 'Registration successful'})
     except sqlite3.IntegrityError:
         return jsonify({'error': 'Email already registered'}), 400
@@ -348,10 +310,7 @@ def logout():
     session.clear()
     return jsonify({'success': True})
 
-# Add cleanup on shutdown
-
 def cleanup_plots():
-    """Clean up uploaded files on server shutdown"""
     upload_dir = app.config['PLOTS_FOLDER']
     if os.path.exists(upload_dir):
         for filename in os.listdir(upload_dir):
@@ -362,7 +321,6 @@ def cleanup_plots():
                 print(f"Error cleaning up {filename}: {e}")
 
 def cleanup_uploads():
-    """Clean up uploaded files on server shutdown"""
     upload_dir = app.config['UPLOAD_FOLDER']
     if os.path.exists(upload_dir):
         for filename in os.listdir(upload_dir):
@@ -372,19 +330,14 @@ def cleanup_uploads():
             except Exception as e:
                 print(f"Error cleaning up {filename}: {e}")
 
-
-
 def cleanup_trend_analysis():
-    # Clean up trend_analysis.html on server shutdown
     trend_analysis_path = os.path.join('static', 'trend_analysis.html')
     if os.path.exists(trend_analysis_path):
         try:
             os.remove(trend_analysis_path)
-            print(f"Removed {trend_analysis_path}")
         except Exception as e:
             print(f"Error removing {trend_analysis_path}: {e}")
 
-# Register cleanup functions
 atexit.register(cleanup_uploads)
 atexit.register(cleanup_plots)
 atexit.register(cleanup_trend_analysis)
@@ -392,7 +345,6 @@ atexit.register(cleanup_trend_analysis)
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# Trends API routes
 @app.route('/get_patients', methods=['GET'])
 @login_required
 def get_patients():
@@ -452,10 +404,8 @@ def get_lab_results():
         session['trend_df'] = df.to_json()
         print(df)
         print("-----------------------------------------")
-        # Generate profiling report
         report_path = os.path.join(app.static_folder, 'trend_analysis.html')
         helper.generate_pandas_profiling_report(df, report_path)
-        # Get list of parameters from DataFrame
         print("-----------------------------------------------")
         print('------------DataFrame------------------------')
         print(df)
@@ -482,7 +432,6 @@ def get_parameter_trend():
         selected_param = data.get('parameter')
         if not selected_param:
             return jsonify({'error': 'Parameter is required'}), 400
-
         if 'trend_df' not in session:
             return jsonify({'error': 'Please select a test first'}), 400
         df = pd.read_json(session['trend_df'])
@@ -501,19 +450,15 @@ def get_parameter_trend():
         return jsonify({'error': str(e)}), 500
 
 def send_email(to_email, subject, body):
-    # Configure these with your email settings
     smtp_server = 'smtp.gmail.com'
     smtp_port = 587
-    sender_email = 'saikiranpatnana5143@gmail.com'  # Replace with your email
-    sender_password = 'ohzc idub grps czwb'   # Replace with your app password
-
+    sender_email = 'saikiranpatnana5143@gmail.com'  
+    sender_password = 'ohzc idub grps czwb'   
     message = MIMEMultipart()
     message['From'] = sender_email
     message['To'] = to_email
     message['Subject'] = subject
-
     message.attach(MIMEText(body, 'plain'))
-
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
@@ -533,27 +478,19 @@ def forgot_password():
     email = request.json.get('email')
     if not email:
         return jsonify({'error': 'Email is required'}), 400
-
     with get_db() as db:
         cursor = db.cursor()
         cursor.execute('SELECT user_id FROM Users WHERE email = ?', (email,))
         user = cursor.fetchone()
-
         if not user:
             return jsonify({'error': 'Email not found'}), 404
-
-        # Generate OTP
         otp = generate_otp()
         expires_at = datetime.now() + timedelta(minutes=10)
-
-        # Store OTP in database
         cursor.execute("""
             INSERT INTO ResetTokens (user_id, token, expires_at)
             VALUES (?, ?, ?)
         """, (user['user_id'], otp, expires_at))
         db.commit()
-
-        # Send OTP via email
         email_body = f"Your OTP for password reset is: {otp}\nThis OTP will expire in 10 minutes."
         if send_email(email, 'Password Reset OTP', email_body):
             return jsonify({'message': 'OTP sent successfully'})
@@ -564,40 +501,29 @@ def verify_otp():
     email = request.json.get('email')
     otp = request.json.get('otp')
     new_password = request.json.get('new_password')
-
     if not all([email, otp, new_password]):
         return jsonify({'error': 'Email, OTP and new password are required'}), 400
-
     with get_db() as db:
         cursor = db.cursor()
         cursor.execute('SELECT user_id FROM Users WHERE email = ?', (email,))
         user = cursor.fetchone()
-
         if not user:
             return jsonify({'error': 'Email not found'}), 404
-
         cursor.execute("""
             SELECT * FROM ResetTokens
             WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
             ORDER BY created_at DESC LIMIT 1
         """, (user['user_id'], otp))
         token = cursor.fetchone()
-
         if not token:
             return jsonify({'error': 'Invalid or expired OTP'}), 400
-
-        # Mark token as used
         cursor.execute('UPDATE ResetTokens SET used = 1 WHERE token_id = ?', (token['token_id'],))
-
-        # Update password
         hashed_password = hash_password(new_password)
         cursor.execute('UPDATE Users SET password = ? WHERE user_id = ?', 
                       (hashed_password, user['user_id']))
         db.commit()
-
         return jsonify({'message': 'Password reset successful'})
 
-# History API routes
 @app.route('/api/user_patients_with_reports', methods=['GET'])
 @login_required
 def get_user_patients_with_reports():
@@ -605,7 +531,6 @@ def get_user_patients_with_reports():
         user_id = session.get('user_id')
         with get_db() as db:
             cursor = db.cursor()
-            # First get unique patients with their IDs
             cursor.execute("""
                 SELECT DISTINCT p.name, p.patient_id
                 FROM Patients p
@@ -614,11 +539,9 @@ def get_user_patients_with_reports():
                 ORDER BY p.name
             """, (user_id,))
             patients = cursor.fetchall()
-            
             result = []
             for patient in patients:
                 patient_name, patient_id = patient
-                # Get all report timestamps and IDs for this patient
                 cursor.execute("""
                     SELECT r.uploaded_at, r.report_id, r.parsed_report
                     FROM Reports r
@@ -630,7 +553,6 @@ def get_user_patients_with_reports():
                     'report_id': row[1],
                     'parsed_report': json.loads(row[2])
                 } for row in cursor.fetchall()]
-                
                 result.append({
                     'name': patient_name,
                     'patient_id': patient_id,
@@ -648,11 +570,9 @@ def get_patient_reports(patient_id):
         user_id = session.get('user_id')
         with get_db() as db:
             cursor = db.cursor()
-            # Verify the patient belongs to the user
             cursor.execute("SELECT 1 FROM Patients WHERE patient_id = ? AND user_id = ?", (patient_id, user_id))
             if not cursor.fetchone():
                 return jsonify({'error': 'Unauthorized access'}), 403
-            
             cursor.execute("""
                 SELECT report_id, uploaded_at, parsed_report
                 FROM Reports

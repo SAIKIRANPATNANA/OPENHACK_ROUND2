@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             resultsSection.style.display = 'block';
                         } catch (error) {
                             console.error('Error displaying report:', error);
-                            alert('Failed to display report');
+                            alert('Failed to display report, once refresh the page and try again.');
                         }
                     });
                     

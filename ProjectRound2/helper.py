@@ -6,6 +6,9 @@ import io,os
 import pymupdf
 import json 
 import requests
+os.environ["LANGCHAIN_API_KEY"] = "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"
+os.environ["LANGCHAIN_TRACING_V2"]="true"
+os.environ["LANGCHAIN_PROJECT"]="default"
 import google.generativeai as genai
 genai.configure(api_key='AIzaSyAFTm-mUcFxAakOw_qks3luweKHLmGhNlQ')
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "doctor-strange-agamotto-aa7e825d6e70.json"
@@ -25,9 +28,8 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')  
 import matplotlib.pyplot as plt
-# import seaborn as sns
 import pandas as pd
 from ydata_profiling import ProfileReport
 from matplotlib.patches import Rectangle
@@ -35,9 +37,7 @@ from google.cloud import vision
 from google.api_core.exceptions import GoogleAPICallError
 import sqlite3
 
-# Add database path
 DB_PATH = 'blood_reports.db'
-
 
 def preprocess_image(image_path):
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -54,7 +54,6 @@ def compress_image(input_path, output_path, quality=85, max_size=(800, 800)):
         img.save(output_path, "JPEG", quality=quality)
         print(f"Image compressed and saved at: {output_path}")
 
-
 def get_parsed_text_using_tesseract(image_path):
     image = Image.open(image_path)
     extracted_text = pytesseract.image_to_string(image)
@@ -66,7 +65,6 @@ def get_parsed_text_using_pypdf(file_path):
     extracted_text = "\n".join([doc.page_content for doc in documents])
     return extracted_text
 
-
 def is_scanned_pdf(file_path):
     doc = pymupdf.open(file_path)
     for page in doc:
@@ -76,7 +74,6 @@ def is_scanned_pdf(file_path):
         if page.get_images(full=True):  
             return True 
     return True
-
 
 def get_parsed_text_using_google_vision(image_path):
     try:
@@ -238,7 +235,6 @@ def generate_parsed_multi_report(llm, parsed_text):
             return parse_multi_report(llm,parsed_text)
     return parse_multi_report(llm, parsed_text)
 
-
 def get_parsed_multi_report(file_path):
     parsed_mutli_report_text = get_parsed_text_using_gemini(file_path)
     llm = ChatGroq(model_name='deepseek-r1-distill-llama-70b',groq_api_key = groq_api_key)
@@ -250,7 +246,7 @@ def get_parsed_text_using_gemini(file_path):
         #     compressed_path = "uploads/compressed.jpg"
         #     compress_image(file_path, compressed_path, quality=70, max_size=(800, 800))
         #     file_path = compressed_path
-        # raise Exception("Could not do!")
+        raise Exception("Could not do!")
         model = genai.GenerativeModel(model_name="gemini-1.5-flash")
         file_id = genai.upload_file(path=file_path)
         user_input = """
@@ -306,8 +302,30 @@ def generating_structured_report(llm,parsed_text):
                 - "Low" if the value is below the lower limit of the reference range.
                 - "High" if the value is above the upper limit of the reference range.
                 - "Normal" if the value falls within the range.
-            - If reference range data is missing or unclear, mark status as "Not Available" instead of assuming High or Low.
-
+                - If reference range data is missing or unclear, mark status as "Not Available" instead of assuming High or Low.
+                - Make sure you correctly and appropriately classify the test name into any of the following:
+                       -- Blood Group Test
+                       -- Calcium Blood Test
+                       -- Cholestrol And Lipid Test
+                       -- C-reactive Protien Test
+                       -- D-dimer Test
+                       -- Erythrocyte Sedimentation Rate Test
+                       -- Folate Test
+                       -- Complete Blood Count Test
+                       -- HbA1c Test
+                       -- hCG Test
+                       -- International Normalised Ratio Test
+                       -- Iron Studies Blood Test
+                       -- Kidney Function Test
+                       -- Liver Function Test
+                       -- Magnesium Blood Test
+                       -- Oestrogen Blood Test
+                       -- Prostate Specific Antigen Test
+                       -- Testosterone Blood Test
+                       -- Thyroid Function Test
+                       -- Troponin Blood Test
+                       -- Vitamin B12 Test
+                       -- Vitamin D Test
             Response Format:
                  {{
             "patient_info": {{
@@ -332,7 +350,7 @@ def generating_structured_report(llm,parsed_text):
                 "instruments": "",  # Instruments used for testing
                 "generated_on": ""  # Report generation date
             }},
-            "test_name": "",  # Extract the test name
+            "test_name": "",  # Extract the test name,
             "lab_results": {{
                 "param_name_1": {{
                     "value": "",  # Extract parameter value
@@ -396,247 +414,88 @@ import numpy as np
 from matplotlib.patches import Rectangle
 
 def convert_to_float(value_str):
-    """
-    Extracts numeric values from blood test results, handling cases like '<148' or '>500'.
-    """
     try:
-        # Remove any non-numeric characters like '<', '>'
         numeric_value = "".join([char for char in value_str if char.isdigit() or char == "."])
         return float(numeric_value)
     except ValueError:
-        return None  # Return None if conversion fails
+        return None  
 
 def create_blood_test_plots(parsed_report, output_folder="static/plots"):
     try:
         os.makedirs(output_folder, exist_ok=True)
-
-        # Convert Pydantic model to dictionary
         if hasattr(parsed_report, 'dict'):
             blood_results = parsed_report.dict()['lab_results']
         else:
             blood_results = parsed_report.lab_results
-
         abnormal_params = {k: v for k, v in blood_results.items() if v['status'] in ('High', 'Low')}
-
         for param, details in abnormal_params.items():
             try:
                 value = convert_to_float(str(details['value']).strip())
                 if value is None:
                     print(f"Skipping {param}: Cannot convert value '{details['value']}' to a number.")
-                    continue  # Skip this parameter if conversion fails
-                
+                    continue  
                 ref_range = details['reference_range'].strip()
-
                 if '-' in ref_range:
                     lower, upper = map(convert_to_float, ref_range.split('-'))
                 elif '–' in ref_range:  
                     lower, upper = map(convert_to_float, ref_range.split('–'))
                 else:
                     print(f"Skipping {param}: Invalid range format - {ref_range}")
-                    continue  # Skip invalid range formats
-
+                    continue  
                 if lower is None or upper is None:
                     print(f"Skipping {param}: Reference range values could not be converted.")
                     continue
-
                 unit = details['unit']
                 fig, ax = plt.subplots(figsize=(10, 6))
                 fig.patch.set_facecolor('white')
                 ax.set_facecolor('#F8FBFF')
-
                 rect = Rectangle((0.7, lower), 0.6, upper-lower,
                                  facecolor='#A8E6CF', alpha=0.3, label='Reference Range')
                 ax.add_patch(rect)
-
                 is_high = value > upper
                 point_color = '#FF6B6B' if is_high else '#4ECDC4'
-
                 for alpha in [0.1, 0.2, 0.3]:
                     ax.scatter(1, value, s=300 + (1-alpha)*200, color=point_color, alpha=alpha, zorder=4)
-
                 ax.scatter(1, value, s=200, color=point_color, marker='o', edgecolor='white', linewidth=2, zorder=5, 
                            label=f"Result: {value} {unit}")
-
                 if is_high:
                     ax.vlines(x=1, ymin=upper, ymax=value, colors=point_color, linestyles='--', alpha=0.6, linewidth=2)
                 else:
                     ax.vlines(x=1, ymin=value, ymax=lower, colors=point_color, linestyles='--', alpha=0.6, linewidth=2)
-
                 ax.set_xlim(0.5, 1.5)
                 ax.set_ylim(min(lower * 0.9, value * 0.9), max(upper * 1.1, value * 1.1))
                 ax.set_xticks([])
-
                 for y in [lower, upper]:
                     ax.axhline(y=y, color='#3D84A8', linestyle='--', alpha=0.4, linewidth=2)
-
                 for y, label in [(lower, 'Lower'), (upper, 'Upper')]:
                     ax.text(0.6, y, f'{label}: {y}', verticalalignment='bottom', horizontalalignment='right', 
                             fontsize=10, color='white', bbox=dict(facecolor='#3D84A8', alpha=0.7, pad=3, boxstyle='round,pad=0.5'))
-
                 ax.grid(True, axis='y', linestyle=':', alpha=0.2, color='#DAE1E7')
-
                 plt.title(f"{param} Test Result", pad=20, fontsize=16, fontweight='bold', color='#2C3E50')
                 plt.ylabel(f"Value ({unit})", fontsize=12, color='#2C3E50')
-
                 status_color = '#FF6B6B' if is_high else '#4ECDC4'
                 status_text = 'HIGH' if is_high else 'LOW'
-
                 bbox_props = dict(boxstyle="round,pad=0.5", fc=status_color, ec="white", alpha=0.8)
                 plt.text(0.98, 0.02, status_text, transform=ax.transAxes, color='white', fontsize=12, fontweight='bold',
                          bbox=bbox_props, horizontalalignment='right', verticalalignment='bottom')
-
                 legend = plt.legend(loc="upper right", fontsize=10, framealpha=0.95, shadow=True)
                 legend.get_frame().set_facecolor('white')
                 legend.get_frame().set_edgecolor('#3D84A8')
-
                 for spine in ax.spines.values():
                     spine.set_edgecolor('#3D84A8')
                     spine.set_linewidth(1.5)
-
                 plt.tight_layout()
-
                 save_path = os.path.join(output_folder, f"{param.replace(' ', '_')}.png")
                 plt.savefig(save_path, bbox_inches="tight", dpi=300, facecolor='white', edgecolor='none')
                 plt.close()
-
                 print(f"Successfully created plot for {param}")
-
             except Exception as param_error:
                 print(f"Error creating plot for {param}: {str(param_error)}")
                 continue
-
     except Exception as e:
         print(f"Error in create_blood_test_plots: {str(e)}")
         raise Exception(f"Failed to create plots: {str(e)}")
 
-
-# def create_blood_test_plots(parsed_report, output_folder="static/plots"):
-#     try:
-       
-#         os.makedirs(output_folder, exist_ok=True)
-#         # Convert Pydantic model to dictionary
-#         if hasattr(parsed_report, 'dict'):
-#             blood_results = parsed_report.dict()['lab_results']
-#         else:
-#             blood_results = parsed_report.lab_results
-#         abnormal_params = {k: v for k, v in blood_results.items() if v['status'] == 'High' or v['status'] == 'Low'}
-#         for param, details in abnormal_params.items():
-#             try:
-#                 value_str = str(details['value']).strip()
-#                 value = float(value_str.replace(',', ''))
-#                 ref_range = details['reference_range'].strip()
-#                 if '-' in ref_range:
-#                     lower, upper = map(lambda x: float(x.strip().replace(',', '')), ref_range.split('-'))
-#                 elif '–' in ref_range:  
-#                     lower, upper = map(lambda x: float(x.strip().replace(',', '')), ref_range.split('–'))
-#                 else:
-#                     print(f"Skipping {param}: Invalid range format - {ref_range}")
-#                     continue
-#                 unit = details['unit']
-#                 fig, ax = plt.subplots(figsize=(10, 6))
-#                 fig.patch.set_facecolor('white')
-#                 ax.set_facecolor('#F8FBFF')
-#                 rect = Rectangle((0.7, lower), 0.6, upper-lower,
-#                             facecolor='#A8E6CF',
-#                             alpha=0.3,
-#                             label='Reference Range')
-#                 ax.add_patch(rect)
-
-#                 is_high = value > upper
-#                 point_color = '#FF6B6B' if is_high else '#4ECDC4'
-#                 for alpha in [0.1, 0.2, 0.3]:
-#                     ax.scatter(1, value,
-#                              s=300 + (1-alpha)*200,
-#                              color=point_color,
-#                              alpha=alpha,
-#                              zorder=4)
-#                 scatter = ax.scatter(1, value,
-#                                    s=200,
-#                                    color=point_color,
-#                                    marker='o',
-#                                    edgecolor='white',
-#                                    linewidth=2,
-#                                    zorder=5,
-#                                    label=f"Result: {value} {unit}")
-#                 if is_high:
-#                     ax.vlines(x=1, ymin=upper, ymax=value,
-#                             colors=point_color,
-#                             linestyles='--',
-#                             alpha=0.6,
-#                             linewidth=2)
-#                 else:
-#                     ax.vlines(x=1, ymin=value, ymax=lower,
-#                             colors=point_color,
-#                             linestyles='--',
-#                             alpha=0.6,
-#                             linewidth=2)
-#                 ax.set_xlim(0.5, 1.5)
-#                 ax.set_ylim(min(lower * 0.9, value * 0.9),
-#                            max(upper * 1.1, value * 1.1))
-#                 ax.set_xticks([])
-#                 for y in [lower, upper]:
-#                     ax.axhline(y=y,
-#                               color='#3D84A8',
-#                               linestyle='--',
-#                               alpha=0.4,
-#                               linewidth=2)
-#                 for y, label in [(lower, 'Lower'), (upper, 'Upper')]:
-#                     ax.text(0.6, y, f'{label}: {y}',
-#                             verticalalignment='bottom',
-#                             horizontalalignment='right',
-#                             fontsize=10,
-#                             color='white',
-#                             bbox=dict(facecolor='#3D84A8',
-#                                     alpha=0.7,
-#                                     pad=3,
-#                                     boxstyle='round,pad=0.5'))
-#                 ax.grid(True, axis='y', linestyle=':', alpha=0.2, color='#DAE1E7')
-#                 plt.title(f"{param} Test Result",
-#                          pad=20,
-#                          fontsize=16,
-#                          fontweight='bold',
-#                          color='#2C3E50')
-#                 plt.ylabel(f"Value ({unit})",
-#                           fontsize=12,
-#                           color='#2C3E50')
-#                 status_color = '#FF6B6B' if is_high else '#4ECDC4'
-#                 status_text = 'HIGH' if is_high else 'LOW'
-#                 bbox_props = dict(boxstyle="round,pad=0.5",
-#                                 fc=status_color,
-#                                 ec="white",
-#                                 alpha=0.8)
-#                 plt.text(0.98, 0.02, status_text,
-#                         transform=ax.transAxes,
-#                         color='white',
-#                         fontsize=12,
-#                         fontweight='bold',
-#                         bbox=bbox_props,
-#                         horizontalalignment='right',
-#                         verticalalignment='bottom')
-#                 legend = plt.legend(loc="upper right",
-#                                   fontsize=10,
-#                                   framealpha=0.95,
-#                                   shadow=True)
-#                 legend.get_frame().set_facecolor('white')
-#                 legend.get_frame().set_edgecolor('#3D84A8')
-#                 for spine in ax.spines.values():
-#                     spine.set_edgecolor('#3D84A8')
-#                     spine.set_linewidth(1.5)
-#                 plt.tight_layout()
-#                 save_path = os.path.join(output_folder, f"{param.replace(' ', '_')}.png")
-#                 plt.savefig(save_path,
-#                            bbox_inches="tight",
-#                            dpi=300,
-#                            facecolor='white',
-#                            edgecolor='none')
-#                 plt.close()
-#                 print(f"Successfully created plot for {param}")
-#             except Exception as param_error:
-#                 print(f"Error creating plot for {param}: {str(param_error)}")
-#                 continue
-#     except Exception as e:
-#         print(f"Error in create_blood_test_plots: {str(e)}")
-#         raise Exception(f"Failed to create plots: {str(e)}")
 
 def get_medical_insights_n_recommendataions(parsed_report):
   class ParameterRecommendation(BaseModel):
@@ -715,36 +574,28 @@ def get_patient_report_history(patient_name, user_id):
     WHERE patient_id in (select patient_id FROM Patients WHERE name = ? AND user_id = ?)
     ORDER BY uploaded_at ASC;
     """
-
     cursor.execute(query, (patient_name, user_id))
     reports = cursor.fetchall()
     conn.close()
     print("Reports Count:", len(reports))
-
     if not reports:
         return "No previous reports available."
-
     formatted_reports = [{"generated_on": json.loads(parsed_report)['lab_info']['generated_on'],  
                          "test_name": json.loads(parsed_report)['test_name'],
                          "lab_results": json.loads(parsed_report)['lab_results']} 
                         for date, parsed_report in reports]
-    # print("Formatted Reports:", formatted_reports)
     print("Formatted Reports Count:", len(formatted_reports))
     return formatted_reports[:-1]
 
-# Global store for chat histories
 message_store = {}
-
 def get_session_history(session_id: str) -> BaseChatMessageHistory:
     if session_id not in message_store:
         message_store[session_id] = ChatMessageHistory()
     return message_store[session_id]
 
 def get_chat_response(message: str, role: str, current_report: dict, previous_reports=None, session_id="chat1"):
-    # print(current_report)
     print("Previous Reports:", previous_reports)
     print("Previous Reports Count:", len(previous_reports))
-    
     system_prompt = """
     You are a knowledgeable and helpful medical assistant, analyzing blood test reports.
 
@@ -771,17 +622,13 @@ def get_chat_response(message: str, role: str, current_report: dict, previous_re
 
     If any data is unclear or missing, mention it explicitly instead of assuming values.
     """
-
-
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
             MessagesPlaceholder(variable_name="messages"),
         ]
     )
-
     model = ChatGroq(model="gemma2-9b-it", groq_api_key=groq_api_key)
-
     chain = (
         RunnablePassthrough.assign(
             current_report=lambda x: x["current_report"],
@@ -791,15 +638,12 @@ def get_chat_response(message: str, role: str, current_report: dict, previous_re
         | prompt
         | model
     )
-
     with_message_history = RunnableWithMessageHistory(
         chain,
         get_session_history,
         input_messages_key="messages",
     )
-
     user_message = HumanMessage(content=message)
-
     try:
         response = with_message_history.invoke(
             {
@@ -900,18 +744,13 @@ def grouping_test_names(test_names):
 
 
 def get_lab_results_for_test(report_ids):
-    """
-    Fetches lab results for the given report IDs.
-    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
     query = f"""
         SELECT report_id, json_extract(parsed_report, '$.lab_results')
         FROM Reports 
         WHERE report_id IN ({",".join(["?"] * len(report_ids))})
     """
-
     cursor.execute(query, report_ids)
     results = cursor.fetchall()
     conn.close()
@@ -928,11 +767,7 @@ def standardizing_param_names_with_llm(lab_results):
     def standardize_param_names_with_llm(llm,lab_results):
         try:
             structured_llm = llm.with_structured_output(StandardizedLabResults)
-            """
-            Uses an LLM to standardize test names dynamically.
-            """
             test_param_names = list({param for report in lab_results.values() for param in report.keys()})
-
             prompt_template = f"""
             The following blood test parameter names were extracted:
             {test_param_names}
@@ -973,29 +808,19 @@ def standardizing_param_names_with_llm(lab_results):
     return standardize_param_names_with_llm(llm,lab_results)       
 
 def apply_standardized_names(lab_results, standardization_map):
-    """
-    Applies standardized names to lab test results.
-    """
     standardized_results = []
-    
     for report_id, tests in lab_results.items():
         standardized_report = {"report_id": report_id}
-        
         for param, details in tests.items():
             standardized_name = next((item["standardized_name"] for item in standardization_map["standardized_tests"] if item["original_name"] == param), param)
             standardized_report[standardized_name] = details["value"]
-        
         standardized_results.append(standardized_report)
-
     return pd.DataFrame(standardized_results)
 
 def generate_pandas_profiling_report(df, report_path):
     if df.empty:
         print("No data available for profiling")
         return None
-    """
-    Performs Pandas Profiling and saves the report as an HTML file.
-    """
     try:
         df.set_index('report_id')
         profile = ProfileReport(df, explorative=True)
@@ -1004,61 +829,42 @@ def generate_pandas_profiling_report(df, report_path):
         print(f"Error generating profiling report: {e}")
         return None
 
-    
 def plot_scatter(df, selected_param):
-    """
-    Plots a scatter plot of the selected parameter over time.
-    """
     print(f"Plotting scatter for param: {selected_param}")
     print(f"DataFrame info: {df.info()}")
     print(f"DataFrame head: \n{df.head()}")
-    
     if df.empty or selected_param not in df.columns:
         print(f"No data available for {selected_param}")
         return None
-        
     plots_dir = os.path.join("static", "plots")
     os.makedirs(plots_dir, exist_ok=True)
-    
     plt.figure(figsize=(10, 5))
-    
     df_sorted = df.sort_values('uploaded_at')
-    
     plt.plot(df_sorted['uploaded_at'], df_sorted[selected_param], '-', color='blue', alpha=0.5)
     plt.scatter(df_sorted['uploaded_at'], df_sorted[selected_param], color='blue', alpha=0.7, label=selected_param)
-    
     plt.xlabel('Upload Date')
     plt.ylabel(f'{selected_param} Value')
     plt.title(f'Trend of {selected_param} Over Time')
     plt.xticks(rotation=45)
     plt.legend()
-    
     plt.grid(True)
     plt.tight_layout()
-    
     safe_param = selected_param.replace(' ', '_').replace('/', '_').replace('\\', '_')
     safe_param = ''.join(c for c in safe_param if c.isalnum() or c in '_-')
-    
     plot_path = os.path.join("plots", f"{safe_param}_trend.png")  
     full_path = os.path.join("static", plot_path) 
     plt.savefig(full_path, bbox_inches="tight", dpi=300)
     plt.close()
     return plot_path  
 
-
 def get_uploaded_timestamps(report_ids):
-    """
-    Fetches the uploaded timestamps for the given report IDs.
-    """
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-
     query = f"""
         SELECT report_id, uploaded_at
         FROM Reports 
         WHERE report_id IN ({",".join(["?"] * len(report_ids))})
     """
-
     cursor.execute(query, report_ids)
     results = cursor.fetchall()
     conn.close()
@@ -1066,12 +872,7 @@ def get_uploaded_timestamps(report_ids):
     return pd.DataFrame(results, columns=["report_id", "uploaded_at"])
 
 def merge_uploaded_timestamps(df):
-    """
-    Merges uploaded timestamps with the existing DataFrame of lab results.
-    """
     timestamps_df = get_uploaded_timestamps(df["report_id"].tolist())
-
     if "report_id" in df.columns:
         df = df.merge(timestamps_df, on="report_id", how="left")
-    
     return df
